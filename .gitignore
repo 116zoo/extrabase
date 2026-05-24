@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Credentials (never commit)
+*.env
+*credentials*.json
+~/.config/seo-geo-aeo/
+
+# Profiles contain API keys via paths — commit schema only
+profiles/*.json
+!profiles/.gitkeep
+
+# Run outputs
+runs/*/
+!runs/.gitkeep
+
+# OS
+.DS_Store
+*.swp
