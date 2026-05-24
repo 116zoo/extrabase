@@ -25,3 +25,13 @@ Never import scripts into each other — each is standalone.
 
 ## Credentials
 Stored in ~/.config/seo-geo-aeo/ — never in this repo.
+
+File: ~/.config/seo-geo-aeo/keys.env
+Load with: source ~/.config/seo-geo-aeo/keys.env
+
+Keys:
+  SERPER_API_KEY       → Serper.dev (SERP Google, gratuit 2500/mois)
+  OPR_API_KEY          → OpenPageRank (autorité domaine, gratuit)
+  PSI_API_KEY          → PageSpeed Insights (optionnel, gratuit)
+  DATAFORSEO_LOGIN     → DataForSEO login (payant, optionnel)
+  DATAFORSEO_PASSWORD  → DataForSEO password (payant, optionnel)

@@ -96,6 +96,17 @@ Flag:
 | GSC signals | 10 | skip if no credentials (award 5 pts default) |
 | Backlinks | 5 | skip if no credentials (award 2 pts default) |
 
+### 7. Multi-page integration (if pages_audit.json available)
+
+If `runs/{domain}/{YYYY-MM-DD}/pages_audit.json` exists, enrich SEO score with:
+- Pages with 4xx/5xx → P0 per broken page (capped at -10 pts total)
+- Duplicate titles rate: > 10% of pages → P1
+- Pages missing title: > 5% → P1
+- Pages missing meta: > 20% → P2
+- Thin content rate: > 30% → P2
+
+Add site-wide on-page summary to `findings.pages` in output JSON.
+
 ## Output format
 
 Return this JSON:

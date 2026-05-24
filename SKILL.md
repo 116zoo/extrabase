@@ -26,11 +26,13 @@ Parse the user's input and route accordingly:
 | Input pattern | Action |
 |---|---|
 | `/seo-geo-aeo https://...` | Load or create site profile → show main menu |
-| `/seo-geo-aeo run --full` | Launch all 4 audit agents in parallel |
+| `/seo-geo-aeo run --full` | Launch all 4 audit agents + pages audit in parallel |
 | `/seo-geo-aeo run --seo` | Launch audit-seo agent only |
 | `/seo-geo-aeo run --geo` | Launch audit-geo agent only |
 | `/seo-geo-aeo run --aeo` | Launch audit-aeo agent only |
 | `/seo-geo-aeo run --competitors` | Launch audit-competitors agent only |
+| `/seo-geo-aeo run --all-pages` | Audit all site pages (on-page issues at scale) |
+| `/seo-geo-aeo run --all-pages --psi 20` | All-pages audit + PageSpeed on top 20 pages |
 | `/seo-geo-aeo apply` | Load pending fixes → show validation table → apply approved |
 | `/seo-geo-aeo schedule --weekly full` | Schedule weekly full audit |
 | `/seo-geo-aeo schedule --monthly full` | Schedule monthly full audit |
@@ -53,14 +55,15 @@ Site: {name} ({url})
 Dernier run: {last_run}
 
 Que voulez-vous faire ?
-[1] Run complet (SEO + GEO + AEO + Concurrents)
+[1] Run complet (SEO + GEO + AEO + Concurrents + Toutes les pages)
 [2] Audit SEO uniquement
 [3] Audit GEO uniquement
 [4] Audit AEO uniquement
 [5] Analyse concurrents
-[6] Appliquer les correctifs en attente
-[7] Voir le dernier rapport
-[8] Modifier le profil
+[6] Audit toutes les pages (on-page issues à l'échelle du site)
+[7] Appliquer les correctifs en attente
+[8] Voir le dernier rapport
+[9] Modifier le profil
 ```
 
 ## Step 2 — Onboarding (new site)
@@ -114,11 +117,16 @@ Save profile to `profiles/{domain}.json` after onboarding completes.
 
 ## Step 3 — Run orchestration
 
-For `run --full`, dispatch all 4 audit agents **in parallel**:
+For `run --full`, dispatch all 5 audit agents **in parallel**:
 - `agents/audit-seo.md`
 - `agents/audit-geo.md`
 - `agents/audit-aeo.md`
 - `agents/audit-competitors.md`
+- `agents/audit-pages.md` (full-site page-level audit)
+
+For `run --all-pages`, dispatch only `agents/audit-pages.md`.
+Parse optional `--psi N` flag and pass as `psi_limit` to the agent.
+Default `psi_limit` for `run --full` = 10 (top 10 pages by sitemap priority).
 
 After all agents complete:
 1. Create run directory: `runs/{domain}/{YYYY-MM-DD}/`
@@ -142,6 +150,7 @@ Always display after a run:
   GEO Score    : {score}/100  {icon}
   AEO Score    : {score}/100  {icon}
   Concurrents  : {delta} pts vs leader
+  Pages        : {n} auditées — {p0} erreurs critiques
 
   P0 (critique) : {n} fixes
   P1 (high)     : {n} fixes
