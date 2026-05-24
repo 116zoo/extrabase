@@ -2,6 +2,13 @@
 name: seo-geo-aeo
 description: Orchestration agent for full SEO + GEO + AEO website optimization. Runs audits, generates prioritized fixes, validates with user, and applies corrections. Connects to GSC, GA4, PageSpeed, DataForSEO, and competitor scraping.
 tools: Bash, Read, Write, WebFetch, WebSearch
+user-invokable: true
+argument-hint: "[url] [--run --full|--seo|--geo|--aeo|--competitors] [--apply] [--report]"
+license: MIT
+metadata:
+  author: ropie
+  version: "1.0.0"
+  category: seo
 ---
 
 # SEO-GEO-AEO Orchestration Agent
