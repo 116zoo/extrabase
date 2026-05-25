@@ -10,6 +10,7 @@ import argparse
 import json
 import os
 import sys
+import html
 from datetime import datetime
 
 try:
@@ -48,6 +49,31 @@ C_SCORE_BAD  = colors.HexColor("#fee2e2")
 
 PAGE_W = A4[0]
 MARGIN = 2 * cm
+
+
+def safe_text(text):
+    """Escape HTML special chars for ReportLab Paragraph, preserving allowed tags."""
+    if not text:
+        return ""
+    text = str(text)
+    # Replace < and > that are not part of allowed ReportLab tags with HTML entities
+    import re
+    # Allowed simple tags: b, i, u, br, font, strike, super, sub
+    allowed = re.compile(r'<(/?(b|i|u|br|font|strike|super|sub|a)\b[^>]*)>', re.IGNORECASE)
+    # Split on potential HTML tags and escape any < > that aren't allowed
+    result = []
+    pos = 0
+    for m in re.finditer(r'<[^>]*>', text):
+        before = text[pos:m.start()]
+        result.append(html.escape(before, quote=False))
+        tag = m.group()
+        if allowed.match(tag):
+            result.append(tag)
+        else:
+            result.append(html.escape(tag, quote=False))
+        pos = m.end()
+    result.append(html.escape(text[pos:], quote=False))
+    return "".join(result)
 
 
 def score_color(score):
@@ -675,19 +701,33 @@ def build_competitors_section(story, styles, audit):
 # ── Fixes Section ─────────────────────────────────────────────────────────────
 
 def build_fixes_section(story, styles, fixes_data):
-    fixes = fixes_data.get("fixes", [])
+    # fixes_data can be a list or a dict with "fixes" key
+    if isinstance(fixes_data, list):
+        fixes = fixes_data
+        by_p = {}
+        for f in fixes:
+            p = f.get("priority", "unknown")
+            by_p[p] = by_p.get(p, 0) + 1
+        applied_count = sum(1 for f in fixes if f.get("status") == "applied")
+        summary = {p: count for p, count in by_p.items()}
+        summary["total"] = len(fixes)
+        summary["applied"] = applied_count
+    else:
+        fixes = fixes_data.get("fixes", [])
+        summary = fixes_data.get("summary", {})
+        applied_count = summary.get("applied", sum(1 for f in fixes if f.get("status") == "applied"))
     if not fixes:
         return
     story.append(PageBreak())
     section_title(story, styles, "6. Plan d'action prioritaire", "")
 
-    summary = fixes_data.get("summary", {})
     sub_title(story, styles, "Résumé")
     kv_table(story, [
         ("P0 Critique", f"{summary.get('P0', 0)} fix(es)"),
         ("P1 Important", f"{summary.get('P1', 0)} fix(es)"),
         ("P2 Moyen terme", f"{summary.get('P2', 0)} fix(es)"),
-        ("Total", f"{summary.get('total', 0)} correctifs"),
+        ("Appliqués", f"{summary.get('applied', applied_count)}/{summary.get('total', len(fixes))} correctifs"),
+        ("Total", f"{summary.get('total', len(fixes))} correctifs"),
     ], col1=4 * cm)
 
     for priority in ["P0", "P1", "P2", "P3"]:
@@ -710,14 +750,19 @@ def build_fixes_section(story, styles, fixes_data):
         data = [header]
         col_w = PAGE_W - 2 * MARGIN
         for fix in prio_fixes:
-            applied = "✓" if fix.get("applied") else "—"
+            is_applied = fix.get("applied") or fix.get("status") == "applied"
+            applied = "✓" if is_applied else "—"
+            title_text = safe_text(fix.get("title", fix.get("fix", fix.get("description", ""))))
+            impact_text = safe_text(str(fix.get("estimated_impact", fix.get("impact", "")))[:60])
+            pillar_text = safe_text(fix.get("pillar", fix.get("category", "")))
+            effort_text = safe_text(fix.get("effort", ""))
             data.append([
-                Paragraph(fix.get("id", ""), styles["body_muted"]),
-                Paragraph(fix.get("title", ""), styles["body"]),
-                Paragraph(fix.get("pillar", ""), styles["body_muted"]),
-                Paragraph(fix.get("effort", ""), styles["body_muted"]),
-                Paragraph(fix.get("estimated_impact", ""), styles["body_muted"]),
-                Paragraph(f'<font color="{C_OK.hexval()}">{applied}</font>' if fix.get("applied") else applied,
+                Paragraph(safe_text(fix.get("id", "")), styles["body_muted"]),
+                Paragraph(title_text, styles["body"]),
+                Paragraph(pillar_text, styles["body_muted"]),
+                Paragraph(effort_text, styles["body_muted"]),
+                Paragraph(impact_text, styles["body_muted"]),
+                Paragraph(f'<font color="{C_OK.hexval()}">{applied}</font>' if is_applied else applied,
                           styles["center"]),
             ])
         t = Table(data, colWidths=[1.8 * cm, 5 * cm, 2 * cm, 1.8 * cm, col_w - 12.1 * cm, 1.5 * cm])
@@ -746,7 +791,14 @@ def generate_pdf(audit_data: dict, output_path: str,
     domain = audit_data.get("domain", "unknown")
     site_name = audit_data.get("url", domain)
     date = audit_data.get("date", datetime.today().strftime("%Y-%m-%d"))
-    scores = audit_data.get("scores", {})
+    raw_scores = audit_data.get("scores", {})
+    # Normalise scores: each value may be a plain int or a dict {"score": N, ...}
+    scores = {}
+    for k, v in raw_scores.items():
+        if isinstance(v, dict):
+            scores[k] = v.get("score", 0)
+        else:
+            scores[k] = v
 
     os.makedirs(os.path.dirname(os.path.abspath(output_path)), exist_ok=True)
 
