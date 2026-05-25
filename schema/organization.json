@@ -1,0 +1,16 @@
+{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "@id": "{URL}#organization",
+  "name": "{ORG_NAME}",
+  "url": "{URL}",
+  "logo": "{LOGO_URL}",
+  "description": "{DESCRIPTION}",
+  "sameAs": [],
+  "contactPoint": {
+    "@type": "ContactPoint",
+    "telephone": "{PHONE}",
+    "contactType": "customer service",
+    "availableLanguage": "French"
+  }
+}
