@@ -7,7 +7,7 @@ argument-hint: "[url] [--run --full|--seo|--geo|--aeo|--competitors|--metadata|-
 license: MIT
 metadata:
   author: ropie
-  version: "2.0.0"
+  version: "2.1.0"
   category: seo
 ---
 
@@ -58,6 +58,11 @@ Parse the user's input and route accordingly:
 | `/seo-geo-aeo keywords --quick-wins` | Show only quick wins (positions 4-20) |
 | `/seo-geo-aeo keywords --gaps` | Show only competitor keyword gaps |
 | `/seo-geo-aeo keywords --export` | Export full keyword list to CSV |
+| `/seo-geo-aeo content` | Interactive Elementor content page creator |
+| `/seo-geo-aeo content --new "{keyword}"` | Create new page for a specific keyword |
+| `/seo-geo-aeo content --page https://...` | Rewrite/optimize an existing page in Elementor |
+| `/seo-geo-aeo content --batch` | Create all missing pages detected by keyword audit |
+| `/seo-geo-aeo content --preview "{keyword}"` | Show full page structure without publishing |
 | `/seo-geo-aeo report` | Regenerate last report |
 | `/seo-geo-aeo profile` | Edit active site profile |
 | `/seo-geo-aeo history` | Show run history for active site |
@@ -89,12 +94,29 @@ Que voulez-vous faire ?
 [8] Audit schémas JSON-LD automatisé (toutes les pages)
 [9] Générer / optimiser llms.txt & llms-full.txt
 [10] Recherche & propositions de mots-clés
+─── CRÉATION DE CONTENU ───────────────────────────────────
+[11] Créer une page de contenu Elementor Pro (SEO + GEO + AEO)
 ─── ACTIONS ───────────────────────────────────────────────
-[11] Appliquer les correctifs en attente (validation AVANT/APRÈS interactive)
-[12] Stratégie schema avancée (builder interactif par page et objectif)
-[13] Voir le dernier rapport
-[14] Modifier le profil
+[12] Appliquer les correctifs en attente (validation AVANT/APRÈS interactive)
+[13] Stratégie schema avancée (builder interactif par page et objectif)
+[14] Voir le dernier rapport
+[15] Modifier le profil
 ```
+
+**Routing option [11] — Créer une page Elementor :**
+```
+CONTENT BUILDER — Elementor Pro
+─────────────────────────────────────────
+Quel type de page créer ?
+[1] Page de service         (intention transactionnelle)
+[2] Article de blog         (intention informationnelle)
+[3] Page locale             (SEO local + GMB)
+[4] Page tarifs/pricing     (intention commerciale)
+[5] Page How-To             (AEO + featured snippets)
+[6] Page à partir d'un mot-clé détecté par l'audit keywords
+[7] Optimiser une page existante
+```
+Delegate to `agents/content-elementor.md`.
 
 **Routing option [7] — Optimisation métadonnées :**
 Delegate to `agents/audit-metadata.md` in interactive mode.
@@ -107,6 +129,9 @@ Delegate to `agents/audit-llms.md` in interactive mode.
 
 **Routing option [10] — Mots-clés :**
 Delegate to `agents/audit-keywords.md` in interactive mode.
+
+**Integration content-elementor ↔ audit-keywords :**
+When `audit-keywords` identifies pages with `mapping_status: "missing_page"`, these are automatically surfaced in the content builder as pre-filled briefs. The user can select which missing pages to create from menu option [11] without re-entering keyword data.
 
 **Routing option [12] — Stratégie schema interactive :**
 ```
