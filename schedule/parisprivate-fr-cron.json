@@ -1,9 +1,0 @@
-{
-  "domain": "parisprivate-fr",
-  "url": "https://parisprivate.fr",
-  "schedule": "monthly-first",
-  "cron": "3 8 1 * *",
-  "description": "Audit mensuel complet SEO+GEO+AEO — parisprivate.fr — 1er du mois à 8h03",
-  "command": "/seo-geo-aeo run --full",
-  "created_at": "2026-05-25"
-}
