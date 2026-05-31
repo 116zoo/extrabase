@@ -1,15 +1,17 @@
 ---
 name: reports
-description: Report generation agent. Merges results from all audit pillars into audit.json, generates a Markdown summary report, and produces a PDF via pdf_report.py. Displays score summary in the terminal immediately.
+description: Report generation agent. Reads audit.json (produced by merge_audit.py) to generate a full Markdown report and PDF. Displays the 9-pillar score summary in the terminal immediately.
 tools: Bash, Read, Write
 ---
 
 # Reports Agent
 
 ## Input
-- All 4 pillar results (seo, geo, aeo, competitors) as JSON objects
+- `runs/{domain}/{YYYY-MM-DD}/audit.json` — merged results from all 9 agents (produced by merge_audit.py)
 - Profile JSON
 - Output directory path: `runs/{domain}/{YYYY-MM-DD}/`
+
+Note: `audit.json` and `fixes.json` are already created by `merge_audit.py`. This agent reads them and generates the human-readable report only.
 
 ## Execution sequence
 
@@ -19,17 +21,36 @@ tools: Bash, Read, Write
 mkdir -p runs/{domain}/{YYYY-MM-DD}/generated-fixes
 ```
 
-### 2. Compute global score
+### 2. Read audit.json
 
-```
-global_score = round(seo_score × 0.35 + geo_score × 0.35 + aeo_score × 0.20 + competitor_adjustment × 0.10)
+Load `runs/{domain}/{YYYY-MM-DD}/audit.json`. If it doesn't exist yet, run:
+
+```bash
+python scripts/merge_audit.py \
+  --run-dir runs/{domain}/{YYYY-MM-DD} \
+  --profile profiles/{domain}.json
 ```
 
-competitor_adjustment:
-- target_vs_leader_delta >= 0 → 80 pts (at or above leader)
-- delta between -10 and 0 → 60 pts
-- delta between -20 and -10 → 40 pts
-- delta < -20 → 20 pts
+Read scores from `audit.scores`:
+- `seo`, `geo`, `aeo`, `metadata`, `schema`, `llms`, `keywords`, `global`
+- `pillars_included` — list of pillars actually present
+
+### 3. Global score formula (for reference — merge_audit.py computes it)
+
+Weighted score across available pillars:
+
+| Pilier     | Poids |
+|---|---|
+| seo        | 0.25  |
+| geo        | 0.20  |
+| aeo        | 0.15  |
+| metadata   | 0.10  |
+| schema     | 0.10  |
+| llms       | 0.10  |
+| keywords   | 0.10  |
+
+Poids redistribués proportionnellement si un pilier est absent.
+Pages et competitors = affichés mais n'entrent pas dans le score global.
 
 ### 3. Build audit.json
 
@@ -47,31 +68,27 @@ Write merged results:
     "aeo": {aeo_score},
     "global": {global_score}
   },
-  "seo": {full seo pillar findings},
-  "geo": {full geo pillar findings},
-  "aeo": {full aeo pillar findings},
-  "competitors": {full competitor findings},
-  "fixes": {
-    "P0": [{all P0 fixes from all pillars}],
-    "P1": [{all P1 fixes}],
-    "P2": [{all P2 fixes}],
-    "P3": [{all P3 fixes}]
+  "pillars": {
+    "seo": {full seo pillar findings},
+    "geo": {full geo pillar findings},
+    "aeo": {full aeo pillar findings},
+    "metadata": {full metadata pillar findings},
+    "schema": {full schema pillar findings},
+    "llms": {full llms pillar findings},
+    "keywords": {full keywords pillar findings},
+    "competitors": {full competitor findings},
+    "pages": {pages aggregate if available}
   },
+  "fixes_count": { "P0": 0, "P1": 0, "P2": 0, "P3": 0, "total": 0 },
   "generated_at": "{ISO datetime}"
 }
 ```
 
-Save to: `runs/{domain}/{YYYY-MM-DD}/audit.json`
+Already written by `merge_audit.py`. This step is a no-op if audit.json exists.
 
-### 4. Build fixes.json
+### 4. Read fixes.json
 
-Extract all fixes from all pillars, assign sequential IDs:
-- seo-001, seo-002, ...
-- geo-001, geo-002, ...
-- aeo-001, ...
-- comp-001, ...
-
-Save to: `runs/{domain}/{YYYY-MM-DD}/fixes.json`
+Already written by `merge_audit.py`. Load it to populate the report.
 
 ### 5. Generate report.md
 
@@ -95,6 +112,11 @@ Write comprehensive Markdown report:
 | SEO | {seo_score}/100 | {icon} | {n} issues |
 | GEO | {geo_score}/100 | {icon} | {n} issues |
 | AEO (grade {grade}) | {aeo_score}/100 | {icon} | {n} issues |
+| Métadonnées | {metadata_score}/100 | {icon} | {n} issues |
+| Schémas JSON-LD | {schema_score}/100 | {icon} | {n} issues |
+| LLMs.txt | {llms_score}/100 | {icon} | {n} issues |
+| Mots-clés | {keywords_score}/100 | {icon} | {n} quick wins |
+| Pages auditées | — | — | {pages_p0} P0, {pages_p1} P1 |
 
 ## Correctifs prioritaires
 

@@ -14,12 +14,17 @@ Output: JSON to stdout
 
 import argparse
 import json
+import os
 import re
+import sys
 import time
 from pathlib import Path
 from urllib.parse import urljoin, urlparse
 
-import requests
+# scrapling_fetcher is the shared HTTP layer (see CLAUDE.md)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scrapling_fetcher import smart_get
+
 from bs4 import BeautifulSoup
 
 # ─────────────────────────────────────────────────────────────────
@@ -32,10 +37,7 @@ AI_BOTS = [
     "meta-externalagent", "Bytespider", "CCBot",
 ]
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (compatible; SEO-GEO-AEO-Audit/2.0)",
-    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
-}
+BLOCKED_STATUSES = {403, 429, 503}
 
 CTA_PATTERNS = re.compile(
     r"\b(réserver|prenez|prendre|découvrez|contactez|essayez|commencez|"
@@ -82,10 +84,17 @@ def extract_schemas(soup):
             error_count += 1
             continue
 
-        # Handle @graph
-        items = data.get("@graph", [data]) if isinstance(data, dict) else [data]
+        # JSON-LD may be a dict, a root list, or nested lists inside @graph.
+        raw_items = data.get("@graph", [data]) if isinstance(data, dict) else data
 
-        for item in items:
+        def flatten_schema_items(value):
+            if isinstance(value, dict):
+                yield value
+            elif isinstance(value, list):
+                for child in value:
+                    yield from flatten_schema_items(child)
+
+        for item in flatten_schema_items(raw_items):
             t = item.get("@type", "")
             if isinstance(t, list):
                 type_list = t
@@ -134,15 +143,18 @@ def parse_robots(base_url):
         "ai_bots_allowed": [],
         "has_sitemap_declared": False,
         "has_robots_ai_allow": False,
+        "blocked": False,
     }
+    r = smart_get(f"{base_url}/robots.txt", timeout=8)
+    if r.status_code in BLOCKED_STATUSES:
+        result["blocked"] = True
+        return result
+    if r.status_code != 200:
+        return result
     try:
-        r = requests.get(f"{base_url}/robots.txt", headers=HEADERS, timeout=8)
-        if r.status_code != 200:
-            return result
-        lines = r.text.splitlines()
         current_ua = None
         disallows = {}
-        for line in lines:
+        for line in r.text.splitlines():
             stripped = line.strip()
             if stripped.lower().startswith("user-agent:"):
                 current_ua = stripped.split(":", 1)[1].strip()
@@ -154,8 +166,6 @@ def parse_robots(base_url):
 
         for bot in AI_BOTS:
             bot_disallows = disallows.get(bot, []) + disallows.get(f"User-agent: {bot}", [])
-            # Also check wildcard
-            wildcard = disallows.get("*", [])
             effectively_blocked = any(d == "/" or d.startswith("/") for d in bot_disallows)
             if effectively_blocked:
                 result["ai_bots_blocked"].append(bot)
@@ -173,14 +183,17 @@ def parse_robots(base_url):
 # ─────────────────────────────────────────────────────────────────
 
 def parse_sitemap(base_url):
-    result = {"sitemap_page_count": 0, "master_page_urls": []}
+    result = {"sitemap_page_count": 0, "master_page_urls": [], "blocked": False}
     service_patterns = re.compile(r"/(hypnose|therapie|service|prestation|soin|traitement|specialite|consultation)-", re.I)
     blog_patterns = re.compile(r"/(blog|articles?|ressources?|guide|actualite)/", re.I)
     special_patterns = re.compile(r"/(contact|rdv|rendez-vous|a-propos|qui-suis-je|equipe|praticien)/", re.I)
 
-    try:
-        s = requests.get(f"{base_url}/sitemap.xml", headers=HEADERS, timeout=10)
-        if s.status_code == 200:
+    s = smart_get(f"{base_url}/sitemap.xml", timeout=10)
+    if s.status_code in BLOCKED_STATUSES:
+        result["blocked"] = True
+        return result
+    if s.status_code == 200:
+        try:
             ssoup = BeautifulSoup(s.text, "lxml-xml")
             locs = [loc.get_text(strip=True) for loc in ssoup.find_all("loc")]
             result["sitemap_page_count"] = len(locs)
@@ -197,8 +210,8 @@ def parse_sitemap(base_url):
                         if kw in url.lower() and kw not in master:
                             master[kw] = url
             result["master_page_urls"] = master
-    except Exception:
-        pass
+        except Exception:
+            pass
     return result
 
 
@@ -501,8 +514,14 @@ def compute_global(seo, geo, aeo, schema, metadata):
 def scrape_master_page(url):
     """Lightweight scrape of a master page — metadata + schema + word count."""
     result = {"url": url, "error": None}
+    resp = smart_get(url, timeout=12, stealth=True)
+    if resp.status_code == 0:
+        result["error"] = "network_error"
+        return result
+    if resp.status_code in BLOCKED_STATUSES:
+        result["blocked"] = True
+        return result
     try:
-        resp = requests.get(url, headers=HEADERS, timeout=12, allow_redirects=True)
         soup = BeautifulSoup(resp.text, "lxml")
         meta = extract_metadata(soup)
         schema_types, schema_detail, err_count = extract_schemas(soup)
@@ -539,6 +558,13 @@ def scrape_competitor(url: str, mode: str = "deep") -> dict:
         "domain": domain,
         "status_code": None,
         "error": None,
+        "blocked": False,
+        "robots_blocked": False,
+        "sitemap_blocked": False,
+        "llms_txt_blocked": False,
+        "title": None,
+        "meta_description": None,
+        "h1": None,
         # Legacy fields (backward compat)
         "has_schema": False,
         "schema_types": [],
@@ -550,16 +576,22 @@ def scrape_competitor(url: str, mode: str = "deep") -> dict:
         "has_faq_schema": False,
     }
 
-    try:
-        resp = requests.get(url, headers=HEADERS, timeout=15, allow_redirects=True)
-        result["status_code"] = resp.status_code
+    # ── Homepage ──────────────────────────────────────────────────
+    resp = smart_get(url, timeout=15, stealth=True)
+
+    if resp.status_code == 0:
+        result["error"] = "network_error"
+        return result
+
+    result["status_code"] = resp.status_code
+    result["blocked"] = resp.status_code in BLOCKED_STATUSES
+
+    if not result["blocked"]:
         soup = BeautifulSoup(resp.text, "lxml")
 
         # ── Metadata ──────────────────────────────────────────────
         meta = extract_metadata(soup)
         result["metadata"] = meta
-
-        # Legacy fields
         result["title"] = meta["title"]
         result["meta_description"] = meta["meta_description"]
 
@@ -571,36 +603,6 @@ def scrape_competitor(url: str, mode: str = "deep") -> dict:
         result["has_schema"] = len(schema_types) > 0
         result["has_faq_schema"] = schema_detail["has_faqpage"]
 
-        # ── Robots / AI bots ─────────────────────────────────────
-        robots = parse_robots(base)
-        result["robots"] = robots
-        result["ai_bots_blocked"] = robots["ai_bots_blocked"]
-        result["has_robots_ai_allow"] = robots["has_robots_ai_allow"]
-
-        # ── Sitemap + master pages ────────────────────────────────
-        sitemap = parse_sitemap(base)
-        result["sitemap"] = sitemap
-        result["sitemap_page_count"] = sitemap["sitemap_page_count"]
-
-        # ── llms.txt ─────────────────────────────────────────────
-        llms_data = {"has_llms_txt": False, "llms_length": 0, "has_llms_full": False}
-        try:
-            lt = requests.get(f"{base}/llms.txt", headers=HEADERS, timeout=8)
-            if lt.status_code == 200:
-                llms_data["has_llms_txt"] = True
-                llms_data["llms_length"] = len(lt.text)
-                sections = len(re.findall(r"^##", lt.text, re.MULTILINE))
-                llms_data["llms_sections_count"] = sections
-        except Exception:
-            pass
-        try:
-            lf = requests.get(f"{base}/llms-full.txt", headers=HEADERS, timeout=8)
-            llms_data["has_llms_full"] = lf.status_code == 200
-        except Exception:
-            pass
-        result["llms"] = llms_data
-        result["has_llms_txt"] = llms_data["has_llms_txt"]
-
         # ── Content signals ───────────────────────────────────────
         content = extract_content_signals(soup)
         result["content"] = content
@@ -611,18 +613,52 @@ def scrape_competitor(url: str, mode: str = "deep") -> dict:
         faq_count = count_faqs(soup)
         result["faq_questions_count"] = faq_count
 
-        # ── agents.md / claude.md (AEO) ───────────────────────────
-        for fname in ["AGENTS.md", "CLAUDE.md", "agents.md"]:
-            try:
-                r = requests.get(f"{base}/{fname}", headers=HEADERS, timeout=5)
-                if r.status_code == 200:
-                    schema_detail["has_agents_md"] = True
-                    break
-            except Exception:
-                pass
+    # ── Public files (always checked, even when blocked) ──────────
 
-        # ── Scoring ───────────────────────────────────────────────
+    # Robots / AI bots
+    robots = parse_robots(base)
+    result["robots"] = robots
+    result["robots_blocked"] = robots.get("blocked", False)
+    result["ai_bots_blocked"] = robots["ai_bots_blocked"]
+    result["has_robots_ai_allow"] = robots["has_robots_ai_allow"]
+
+    # Sitemap
+    sitemap = parse_sitemap(base)
+    result["sitemap"] = sitemap
+    result["sitemap_blocked"] = sitemap.get("blocked", False)
+    result["sitemap_page_count"] = sitemap["sitemap_page_count"]
+
+    # llms.txt
+    llms_data = {"has_llms_txt": False, "llms_length": 0, "has_llms_full": False}
+    lt = smart_get(f"{base}/llms.txt", timeout=8)
+    if lt.status_code in BLOCKED_STATUSES:
+        result["llms_txt_blocked"] = True
+    elif lt.status_code == 200:
+        llms_data["has_llms_txt"] = True
+        llms_data["llms_length"] = len(lt.text)
+        sections = len(re.findall(r"^##", lt.text, re.MULTILINE))
+        llms_data["llms_sections_count"] = sections
+
+    lf = smart_get(f"{base}/llms-full.txt", timeout=8)
+    llms_data["has_llms_full"] = lf.status_code == 200
+
+    result["llms"] = llms_data
+    result["has_llms_txt"] = llms_data["has_llms_txt"]
+
+    # ── Scoring + agents.md (skip if blocked — no content to score) ─
+    if not result["blocked"]:
+        # agents.md / claude.md (AEO) — checked after public files
+        schema_detail = result.get("schema_detail", {})
+        for fname in ["AGENTS.md", "CLAUDE.md", "agents.md"]:
+            r = smart_get(f"{base}/{fname}", timeout=5)
+            if r.status_code == 200:
+                schema_detail["has_agents_md"] = True
+                break
+
         mobile_score = None  # PageSpeed called separately if needed
+        meta = result.get("metadata", {})
+        content = result.get("content", {})
+        faq_count = result.get("faq_questions_count", 0)
 
         seo = score_seo(meta, content, schema_detail, robots, sitemap, mobile_score)
         geo = score_geo(meta, content, schema_detail, robots, llms_data, faq_count)
@@ -644,9 +680,6 @@ def scrape_competitor(url: str, mode: str = "deep") -> dict:
                     master_pages[page_type] = scrape_master_page(page_url)
                     time.sleep(1.0)
             result["master_pages"] = master_pages
-
-    except requests.RequestException as e:
-        result["error"] = str(e)
 
     return result
 

@@ -6,16 +6,18 @@ Output: JSON to stdout
 """
 import argparse
 import json
+import os
 import sys
-import requests
+
+# scrapling_fetcher is the shared HTTP layer (see CLAUDE.md)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from scrapling_fetcher import smart_get, extract_schema_types
+
 from bs4 import BeautifulSoup
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 
 def fetch_page(url: str, timeout: int = 15) -> dict:
-    headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; SEO-GEO-AEO-Audit/1.0)"
-    }
     result = {
         "url": url,
         "status_code": None,
@@ -34,82 +36,65 @@ def fetch_page(url: str, timeout: int = 15) -> dict:
         "schema_types": [],
         "error": None,
     }
-    try:
-        resp = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
-        result["status_code"] = resp.status_code
-        result["final_url"] = resp.url
-        result["headers"] = dict(resp.headers)
 
-        soup = BeautifulSoup(resp.text, "lxml")
+    resp = smart_get(url, timeout=timeout, stealth=True)
 
-        title_tag = soup.find("title")
-        result["title"] = title_tag.get_text(strip=True) if title_tag else None
+    if resp.status_code == 0:
+        result["error"] = "network_error"
+        return result
 
-        meta_desc = soup.find("meta", attrs={"name": "description"})
-        result["meta_description"] = meta_desc.get("content", "").strip() if meta_desc else None
+    result["status_code"] = resp.status_code
+    result["final_url"] = resp.url
+    result["headers"] = resp.headers
 
-        canonical = soup.find("link", attrs={"rel": "canonical"})
-        result["canonical"] = canonical.get("href", "").strip() if canonical else None
+    soup = BeautifulSoup(resp.text, "lxml")
 
-        h1 = soup.find("h1")
-        result["h1"] = h1.get_text(strip=True) if h1 else None
-        result["h2_list"] = [h.get_text(strip=True) for h in soup.find_all("h2")][:10]
+    title_tag = soup.find("title")
+    result["title"] = title_tag.get_text(strip=True) if title_tag else None
 
-        body_text = soup.get_text(separator=" ", strip=True)
-        result["word_count"] = len(body_text.split())
+    meta_desc = soup.find("meta", attrs={"name": "description"})
+    result["meta_description"] = meta_desc.get("content", "").strip() if meta_desc else None
 
-        # Schema types
-        schemas = soup.find_all("script", attrs={"type": "application/ld+json"})
-        types = []
-        for s in schemas:
-            try:
-                data = json.loads(s.string or "")
-                t = data.get("@type") or (data.get("@graph", [{}])[0].get("@type") if data.get("@graph") else None)
-                if t:
-                    types.append(t if isinstance(t, str) else str(t))
-            except Exception:
-                pass
-        result["schema_types"] = types
+    canonical = soup.find("link", attrs={"rel": "canonical"})
+    result["canonical"] = canonical.get("href", "").strip() if canonical else None
 
-        # robots.txt
-        base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
-        try:
-            r = requests.get(f"{base}/robots.txt", headers=headers, timeout=10)
-            result["robots_txt"] = r.text if r.status_code == 200 else None
-            if result["robots_txt"]:
-                ai_bots = ["GPTBot", "ClaudeBot", "PerplexityBot", "Googlebot-Extended", "anthropic-ai", "cohere-ai"]
-                blocked = []
-                lines = result["robots_txt"].splitlines()
-                current_ua = None
-                for line in lines:
-                    line = line.strip()
-                    if line.lower().startswith("user-agent:"):
-                        current_ua = line.split(":", 1)[1].strip()
-                    elif line.lower().startswith("disallow: /") and current_ua:
-                        if any(bot.lower() in current_ua.lower() for bot in ai_bots):
-                            blocked.append(current_ua)
-                result["robots_ai_blocked"] = list(set(blocked))
-        except Exception:
-            pass
+    h1 = soup.find("h1")
+    result["h1"] = h1.get_text(strip=True) if h1 else None
+    result["h2_list"] = [h.get_text(strip=True) for h in soup.find_all("h2")][:10]
 
-        # sitemap.xml
-        try:
-            s = requests.get(f"{base}/sitemap.xml", headers=headers, timeout=10)
-            if s.status_code == 200:
-                ssoup = BeautifulSoup(s.text, "lxml-xml")
-                result["sitemap_urls"] = [loc.text for loc in ssoup.find_all("loc")][:50]
-        except Exception:
-            pass
+    body_text = soup.get_text(separator=" ", strip=True)
+    result["word_count"] = len(body_text.split())
 
-        # llms.txt
-        try:
-            lt = requests.get(f"{base}/llms.txt", headers=headers, timeout=10)
-            result["llms_txt"] = lt.text[:3000] if lt.status_code == 200 else None
-        except Exception:
-            pass
+    # Schema types — extract_schema_types handles @graph and flat @type correctly
+    result["schema_types"] = extract_schema_types(resp)
 
-    except requests.RequestException as e:
-        result["error"] = str(e)
+    base = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+
+    # robots.txt
+    r = smart_get(f"{base}/robots.txt", timeout=10)
+    if r.status_code == 200:
+        result["robots_txt"] = r.text
+        ai_bots = ["GPTBot", "ClaudeBot", "PerplexityBot", "Googlebot-Extended", "anthropic-ai", "cohere-ai"]
+        blocked = []
+        current_ua = None
+        for line in r.text.splitlines():
+            line = line.strip()
+            if line.lower().startswith("user-agent:"):
+                current_ua = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("disallow: /") and current_ua:
+                if any(bot.lower() in current_ua.lower() for bot in ai_bots):
+                    blocked.append(current_ua)
+        result["robots_ai_blocked"] = list(set(blocked))
+
+    # sitemap.xml
+    s = smart_get(f"{base}/sitemap.xml", timeout=10)
+    if s.status_code == 200:
+        ssoup = BeautifulSoup(s.text, "lxml-xml")
+        result["sitemap_urls"] = [loc.text for loc in ssoup.find_all("loc")][:50]
+
+    # llms.txt
+    lt = smart_get(f"{base}/llms.txt", timeout=10)
+    result["llms_txt"] = lt.text[:3000] if lt.status_code == 200 else None
 
     return result
 

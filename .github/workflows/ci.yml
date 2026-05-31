@@ -38,6 +38,13 @@ jobs:
             agents/audit-competitors.md \
             agents/audit-pages.md \
             agents/audit-free-serp.md \
+            agents/audit-metadata.md \
+            agents/audit-schema-auto.md \
+            agents/audit-llms.md \
+            agents/audit-keywords.md \
+            agents/audit-schedule.md \
+            agents/content-elementor.md \
+            agents/audit-schema-strategy.md \
             agents/apply-fixes.md \
             agents/reports.md
           do
@@ -56,7 +63,15 @@ jobs:
             scripts/competitor_scraper.py \
             scripts/crawl_site.py \
             scripts/audit_all_pages.py \
-            scripts/pdf_report.py
+            scripts/pdf_report.py \
+            scripts/run_scheduled.py \
+            scripts/audit_metadata.py \
+            scripts/audit_schema.py \
+            scripts/generate_llms.py \
+            scripts/keyword_research.py \
+            scripts/wp_elementor.py \
+            scripts/select_fixes.py \
+            scripts/merge_audit.py
           do
             [ -f "$f" ] || (echo "Missing: $f" && exit 1)
           done

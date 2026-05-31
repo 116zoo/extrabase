@@ -23,6 +23,11 @@ All scripts accept CLI args and output JSON to stdout.
 Run: python scripts/fetch_page.py --url https://site.fr
 Never import scripts into each other — each is standalone.
 
+Exception: `scripts/scrapling_fetcher.py` is a shared HTTP utility module.
+Scripts that perform HTTP requests (`fetch_page.py`, `competitor_scraper.py`,
+`scrapling_spider.py`, etc.) import `smart_get` and `extract_schema_types` from it.
+It is NOT a standalone script — it has no CLI / main block.
+
 ## Credentials
 Stored in ~/.config/seo-geo-aeo/ — never in this repo.
 

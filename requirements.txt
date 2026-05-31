@@ -14,3 +14,7 @@ playwright>=1.43.0
 pytest>=8.0.0
 pytest-mock>=3.14.0
 responses>=0.25.0
+# Scrapling — advanced scraping layer (TLS fingerprinting, StealthyFetcher, SitemapSpider)
+# Optional: falls back to requests+BeautifulSoup if not installed
+# Install browser engines after pip install: scrapling install
+scrapling[all]>=0.4.8
