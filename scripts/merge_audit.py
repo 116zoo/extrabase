@@ -28,7 +28,7 @@ PILLAR_WEIGHTS = {
 }
 
 # Pillars that contribute a bonus/malus but are not part of the weighted score
-BONUS_PILLARS = {"pages", "competitors"}
+BONUS_PILLARS = {"pages", "competitors", "competitor-content"}
 
 # Files to ignore when scanning run-dir
 IGNORED_FILES = {
@@ -38,6 +38,7 @@ IGNORED_FILES = {
     "report.pdf",
     "crawl.json",
     "build_report.py",
+    "competitor-content-snapshot.json",
 }
 
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
@@ -53,6 +54,7 @@ PILLAR_ID_PREFIX = {
     "keywords": "kw",
     "pages": "pages",
     "competitors": "comp",
+    "competitor-content": "ccm",
 }
 
 

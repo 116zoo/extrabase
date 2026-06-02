@@ -35,11 +35,12 @@ RUN_TYPE_MAP = {
     "schema":      ("schema",      "scripts/audit_schema.py",       "--sitemap-url"),
     "llms":        ("llms",        "scripts/generate_llms.py",      "--mode check --url"),
     "keywords":    ("keywords",    "scripts/keyword_research.py",   "--keywords"),
-    "competitors": ("competitors", "scripts/competitor_scraper.py", None),
+    "competitors":         ("competitors",        "scripts/competitor_scraper.py",         None),
+    "competitor-content":  ("competitor-content", "scripts/competitor_content_monitor.py", None),
     "full":        None,  # special: runs all pillars
 }
 
-FULL_RUN_ORDER = ["seo", "geo", "aeo", "competitors", "pages", "metadata", "schema", "llms", "keywords"]
+FULL_RUN_ORDER = ["seo", "geo", "aeo", "competitors", "competitor-content", "pages", "metadata", "schema", "llms", "keywords"]
 
 
 def load_json(path: Path) -> dict:
@@ -90,6 +91,23 @@ def build_command_for_type(run_type: str, url: str, profile: dict) -> list[dict]
     if run_type == "competitors":
         competitor_urls = _competitor_urls(profile, url)
         return [{"pillar": pillar, "argv": [script, "--urls", *competitor_urls]}]
+
+    if run_type == "competitor-content":
+        competitor_urls = _competitor_urls(profile, url)
+        domain = profile.get("domain", "")
+        kws = _keywords_arg(profile)
+        competitors_json = json.dumps(competitor_urls)
+        return [{
+            "pillar": pillar,
+            "argv": [
+                script,
+                "--url", url,
+                "--domain", domain,
+                "--competitors", competitors_json,
+                "--keywords", kws,
+                "--mode", "diff",
+            ],
+        }]
 
     if run_type == "keywords":
         kws = _keywords_arg(profile)
