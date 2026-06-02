@@ -66,6 +66,14 @@ FETCH_TIMEOUT = 12  # seconds
 MAX_NEW_PAGES_PER_COMPETITOR = 50  # cap scraping cost
 MAX_SITEMAP_URLS = 500
 
+MAX_METADATA_PAGES_PER_COMPETITOR = 30  # pages to crawl for metadata tracking
+
+SKIP_URL_PATTERNS = [
+    "/wp-json/", "/wp-admin/", "/wp-content/", "/feed/", "/rss",
+    "/sitemap", "/robots.txt", "?replytocom=", "?p=", "/tag/",
+    "/author/", "/page/", "/attachment/", ".jpg", ".png", ".pdf",
+]
+
 
 # ---------------------------------------------------------------------------
 # HTTP helpers
@@ -410,6 +418,144 @@ def _compute_score(new_content: list[dict], trending: list[dict]) -> int:
 
 
 # ---------------------------------------------------------------------------
+# Metadata tracking helpers
+# ---------------------------------------------------------------------------
+
+def _filter_content_urls(urls: set[str], max_pages: int) -> list[str]:
+    """Filter out non-content URLs and prioritize content-rich pages."""
+    filtered: list[str] = []
+    for url in urls:
+        url_lower = url.lower()
+        if any(pat in url_lower for pat in SKIP_URL_PATTERNS):
+            continue
+        filtered.append(url)
+
+    # Prioritize by content signals
+    high: list[str] = []
+    mid: list[str] = []
+    home: list[str] = []
+
+    high_signals = ["/service", "/faq", "/blog", "/guide", "/prestation",
+                    "/accompagnement", "/article", "/actualite", "/soin",
+                    "/offre", "/programme", "/consultation", "/temoignage",
+                    "/cas-", "/etude-de-cas", "/comment-", "/outil/", "/calculateur/"]
+    for url in filtered:
+        url_lower = url.lower()
+        parsed = urlparse(url)
+        path = parsed.path.rstrip("/")
+        if path in ("", "/"):
+            home.append(url)
+        elif any(s in url_lower for s in high_signals):
+            high.append(url)
+        else:
+            mid.append(url)
+
+    ordered = high + mid + home
+    return ordered[:max_pages]
+
+
+def _crawl_pages_metadata(urls: list[str]) -> dict[str, dict]:
+    """Crawl each URL and return metadata dict keyed by URL."""
+    today = date.today().isoformat()
+    result: dict[str, dict] = {}
+    for url in urls:
+        html = _fetch_text(url)
+        if not html:
+            continue
+        meta = _extract_page_meta(html)
+        result[url] = {
+            "title": meta["title"],
+            "meta_description": meta["meta_description"],
+            "h1": meta["h1"],
+            "schema_types": meta["schema_types"],
+            "word_count": meta["word_count"],
+            "last_checked": today,
+        }
+    return result
+
+
+def _detect_page_changes(
+    prev_meta: dict,
+    curr_meta: dict,
+    url: str,
+    comp: str,
+    today: str,
+) -> list[dict]:
+    """Return a list of change dicts comparing prev_meta vs curr_meta for one URL."""
+    changes: list[dict] = []
+
+    # schema_changed
+    if sorted(prev_meta.get("schema_types", [])) != sorted(curr_meta.get("schema_types", [])):
+        changes.append({
+            "type": "schema_changed",
+            "competitor": comp,
+            "url": url,
+            "detected_at": today,
+            "severity": "high",
+            "before": {"schema_types": prev_meta.get("schema_types", [])},
+            "after": {"schema_types": curr_meta.get("schema_types", [])},
+        })
+
+    # meta_changed
+    prev_desc = prev_meta.get("meta_description", "")
+    curr_desc = curr_meta.get("meta_description", "")
+    if prev_desc and curr_desc and prev_desc != curr_desc:
+        changes.append({
+            "type": "meta_changed",
+            "competitor": comp,
+            "url": url,
+            "detected_at": today,
+            "severity": "medium",
+            "before": {"meta_description": prev_desc},
+            "after": {"meta_description": curr_desc},
+        })
+
+    # title_changed
+    prev_title = prev_meta.get("title", "")
+    curr_title = curr_meta.get("title", "")
+    if prev_title and curr_title and prev_title != curr_title:
+        changes.append({
+            "type": "title_changed",
+            "competitor": comp,
+            "url": url,
+            "detected_at": today,
+            "severity": "medium",
+            "before": {"title": prev_title},
+            "after": {"title": curr_title},
+        })
+
+    # h1_changed
+    prev_h1 = prev_meta.get("h1", "")
+    curr_h1 = curr_meta.get("h1", "")
+    if prev_h1 and curr_h1 and prev_h1 != curr_h1:
+        changes.append({
+            "type": "h1_changed",
+            "competitor": comp,
+            "url": url,
+            "detected_at": today,
+            "severity": "low",
+            "before": {"h1": prev_h1},
+            "after": {"h1": curr_h1},
+        })
+
+    # content_updated: abs delta word_count > 20% of prev
+    prev_wc = prev_meta.get("word_count", 0)
+    curr_wc = curr_meta.get("word_count", 0)
+    if prev_wc > 0 and abs(curr_wc - prev_wc) > prev_wc * 0.2:
+        changes.append({
+            "type": "content_updated",
+            "competitor": comp,
+            "url": url,
+            "detected_at": today,
+            "severity": "low",
+            "before": {"word_count": prev_wc},
+            "after": {"word_count": curr_wc},
+        })
+
+    return changes
+
+
+# ---------------------------------------------------------------------------
 # Main logic
 # ---------------------------------------------------------------------------
 
@@ -427,6 +573,7 @@ def run(
     current_snapshot: dict[str, dict] = {}
     all_new_content: list[dict] = []
     all_removed: list[dict] = []
+    all_page_changes: list[dict] = []
 
     fix_seq = 1
 
@@ -447,6 +594,11 @@ def run(
             "rss_items": rss_items[:20],
         }
 
+        # --- Crawl metadata for content-rich pages ---
+        urls_to_crawl = _filter_content_urls(sitemap_urls, MAX_METADATA_PAGES_PER_COMPETITOR)
+        curr_pages_meta = _crawl_pages_metadata(urls_to_crawl)
+        current_snapshot[comp_domain]["pages_metadata"] = curr_pages_meta
+
         # --- Diff vs previous snapshot ---
         if mode == "baseline" or previous_snapshot is None:
             continue
@@ -460,6 +612,19 @@ def run(
         # Record removed pages
         for rurl in removed_urls:
             all_removed.append({"competitor": comp_domain, "url": rurl})
+
+        # --- Detect page-level metadata changes ---
+        prev_pages_meta = prev_comp.get("pages_metadata", {})
+        for page_url in curr_pages_meta:
+            if page_url in prev_pages_meta:
+                page_changes = _detect_page_changes(
+                    prev_pages_meta[page_url],
+                    curr_pages_meta[page_url],
+                    page_url,
+                    comp_domain,
+                    today,
+                )
+                all_page_changes.extend(page_changes)
 
         # Analyze new pages (cap to avoid excessive HTTP requests)
         for page_url in list(new_urls)[:MAX_NEW_PAGES_PER_COMPETITOR]:
@@ -620,6 +785,26 @@ def run(
         ),
     }
 
+    # --- Save competitor-changes.json ---
+    changes_payload = {
+        "domain": domain,
+        "date": today,
+        "from_date": from_date,
+        "competitors": list(current_snapshot.keys()),
+        "changes": (
+            [{"type": "new_page", "competitor": p["competitor"], "url": p["url"],
+              "detected_at": today, "severity": "high",
+              "metadata": {k: p.get(k) for k in ["title", "h1", "meta_description", "schema_types", "word_count", "content_type"]}}
+             for p in all_new_content]
+            + [{"type": "removed_page", "competitor": r["competitor"], "url": r["url"],
+                "detected_at": today, "severity": "medium"}
+               for r in all_removed]
+            + all_page_changes
+        ),
+    }
+    changes_path = run_dir / "competitor-changes.json"
+    changes_path.write_text(json.dumps(changes_payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
     return {
         "pillar": "competitor-content",
         "score": score,
@@ -637,6 +822,8 @@ def run(
         "trending_topics": trending_topics,
         "findings": findings,
         "fixes": fixes,
+        "page_changes": all_page_changes,
+        "changes_path": str(changes_path),
         "metadata": {
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "mode": mode,
