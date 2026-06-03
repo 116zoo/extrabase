@@ -7,6 +7,7 @@
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
+
   <!-- HEADER -->
   <header class="header">
     <div class="header-inner">
@@ -21,63 +22,122 @@
   </header>
 
   <!-- STATS BAR -->
-  <section class="stats-bar">
-    <div class="stat-card" data-type="new_page">
+  <section class="stats-bar" aria-label="Statistiques">
+    <div class="stat-card" data-type="new_page" title="Pages ajoutées par les concurrents">
       <span class="stat-count" id="stat-new">0</span>
       <span class="stat-label">Nouvelles pages</span>
     </div>
-    <div class="stat-card" data-type="removed_page">
+    <div class="stat-card" data-type="removed_page" title="Pages supprimées chez les concurrents">
       <span class="stat-count" id="stat-removed">0</span>
       <span class="stat-label">Pages supprimées</span>
     </div>
-    <div class="stat-card" data-type="schema_changed">
+    <div class="stat-card" data-type="schema_changed" title="Modifications de balisage Schema.org">
       <span class="stat-count" id="stat-schema">0</span>
       <span class="stat-label">Schémas modifiés</span>
     </div>
-    <div class="stat-card" data-type="meta_changed">
+    <div class="stat-card" data-type="meta_changed" title="Changements de meta description">
       <span class="stat-count" id="stat-meta">0</span>
       <span class="stat-label">Metas modifiées</span>
     </div>
-    <div class="stat-card" data-type="title_changed">
+    <div class="stat-card" data-type="title_changed" title="Changements de balise title">
       <span class="stat-count" id="stat-title">0</span>
       <span class="stat-label">Titres modifiés</span>
     </div>
-  </section>
-
-  <!-- FILTERS -->
-  <section class="filters">
-    <select id="filter-competitor" class="filter-select">
-      <option value="">Tous les concurrents</option>
-    </select>
-    <select id="filter-type" class="filter-select">
-      <option value="">Tous les changements</option>
-      <option value="new_page">Nouvelle page</option>
-      <option value="removed_page">Page supprimée</option>
-      <option value="schema_changed">Schéma modifié</option>
-      <option value="meta_changed">Meta modifiée</option>
-      <option value="title_changed">Titre modifié</option>
-      <option value="h1_changed">H1 modifié</option>
-      <option value="content_updated">Contenu mis à jour</option>
-    </select>
-    <select id="filter-days" class="filter-select">
-      <option value="7">7 derniers jours</option>
-      <option value="30" selected>30 derniers jours</option>
-      <option value="90">90 derniers jours</option>
-      <option value="365">1 an</option>
-    </select>
-    <button id="btn-refresh" class="btn-refresh">↻ Actualiser</button>
-  </section>
-
-  <!-- TIMELINE -->
-  <main class="timeline" id="timeline">
-    <div class="empty-state" id="empty-state">
-      <div class="empty-icon">📊</div>
-      <p>Sélectionnez un domaine pour afficher les changements.</p>
+    <div class="stat-card" data-type="h1_changed" title="Changements de balise H1">
+      <span class="stat-count" id="stat-h1">0</span>
+      <span class="stat-label">H1 modifiés</span>
     </div>
-  </main>
+  </section>
+
+  <!-- TABS NAV -->
+  <nav class="tabs-nav" role="tablist" aria-label="Navigation">
+    <button class="tab-btn active" data-tab="changes" role="tab" aria-selected="true">
+      <span class="tab-icon">🔔</span> Changements
+    </button>
+    <button class="tab-btn" data-tab="competitors" role="tab" aria-selected="false">
+      <span class="tab-icon">🏢</span> Concurrents
+    </button>
+    <button class="tab-btn" data-tab="inventory" role="tab" aria-selected="false">
+      <span class="tab-icon">📋</span> Inventaire
+    </button>
+  </nav>
+
+  <!-- TAB: CHANGEMENTS -->
+  <div class="tab-content" id="tab-changes" role="tabpanel">
+    <!-- FILTERS -->
+    <section class="filters">
+      <select id="filter-competitor" class="filter-select">
+        <option value="">Tous les concurrents</option>
+      </select>
+      <select id="filter-type" class="filter-select">
+        <option value="">Tous les changements</option>
+        <option value="new_page">Nouvelle page</option>
+        <option value="removed_page">Page supprimée</option>
+        <option value="schema_changed">Schéma modifié</option>
+        <option value="meta_changed">Meta modifiée</option>
+        <option value="title_changed">Titre modifié</option>
+        <option value="h1_changed">H1 modifié</option>
+        <option value="content_updated">Contenu mis à jour</option>
+      </select>
+      <select id="filter-days" class="filter-select">
+        <option value="7">7 derniers jours</option>
+        <option value="30" selected>30 derniers jours</option>
+        <option value="90">90 derniers jours</option>
+        <option value="365">1 an</option>
+      </select>
+      <button id="btn-refresh" class="btn-refresh">↻ Actualiser</button>
+    </section>
+
+    <!-- TIMELINE -->
+    <main class="timeline" id="timeline">
+      <div class="empty-state" id="empty-state">
+        <div class="empty-icon">📊</div>
+        <p>Sélectionnez un domaine pour afficher les changements.</p>
+      </div>
+    </main>
+  </div>
+
+  <!-- TAB: CONCURRENTS -->
+  <div class="tab-content hidden" id="tab-competitors" role="tabpanel">
+    <div class="tab-inner">
+      <div class="tab-header">
+        <h2 class="tab-title">Concurrents surveillés</h2>
+        <p class="tab-subtitle">Cliquez sur un concurrent pour filtrer ses changements.</p>
+      </div>
+      <div class="competitor-grid" id="competitor-grid">
+        <div class="empty-state">
+          <div class="empty-icon">🏢</div>
+          <p>Aucun concurrent détecté. Lancez un audit avec le monitor.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TAB: INVENTAIRE -->
+  <div class="tab-content hidden" id="tab-inventory" role="tabpanel">
+    <div class="tab-inner">
+      <div class="tab-header">
+        <h2 class="tab-title">Inventaire des pages</h2>
+        <p class="tab-subtitle">Liste de toutes les URLs indexées dans le dernier snapshot.</p>
+      </div>
+      <div class="inventory-controls">
+        <input type="text" id="inventory-search" class="inventory-search" placeholder="Rechercher une URL, un titre…">
+        <select id="inventory-filter-comp" class="filter-select">
+          <option value="">Tous les concurrents</option>
+        </select>
+        <span class="inventory-count" id="inventory-count"></span>
+      </div>
+      <div class="inventory-list" id="inventory-list">
+        <div class="empty-state">
+          <div class="empty-icon">📋</div>
+          <p>Chargement de l'inventaire…</p>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- DETAIL PANEL -->
-  <aside class="detail-panel" id="detail-panel">
+  <aside class="detail-panel" id="detail-panel" aria-label="Détails du changement">
     <button class="close-btn" id="close-detail" aria-label="Fermer">✕</button>
     <div id="detail-content"></div>
   </aside>

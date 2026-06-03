@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "competitor-monitor",
+      "runtimeExecutable": "python3",
+      "runtimeArgs": ["web/server.py", "--port", "5500", "--no-browser"],
+      "port": 5500
+    }
+  ]
+}

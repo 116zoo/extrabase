@@ -211,6 +211,60 @@ def handle_competitors(handler: BaseHTTPRequestHandler, params: dict) -> None:
     _json_response(handler, result)
 
 
+def handle_pages(handler: BaseHTTPRequestHandler, params: dict) -> None:
+    domain = params.get("domain", [""])[0]
+    competitor = params.get("competitor", [""])[0]
+    if not domain:
+        _json_response(handler, {"error": "domain required"}, 400)
+        return
+
+    runs_path = _runs_dir() / domain
+    if not runs_path.exists():
+        _json_response(handler, {"pages": [], "total": 0})
+        return
+
+    for run_dir in sorted(runs_path.iterdir(), reverse=True):
+        if not run_dir.is_dir():
+            continue
+        snap_file = run_dir / "competitor-content-snapshot.json"
+        if not snap_file.exists():
+            continue
+        try:
+            snap = json.loads(snap_file.read_text(encoding="utf-8"))
+        except Exception:
+            continue
+
+        pages: list[dict] = []
+        competitors_data = snap.get("competitors", {})
+        targets = (
+            {competitor: competitors_data[competitor]}
+            if competitor and competitor in competitors_data
+            else competitors_data
+        )
+        for comp_domain, comp_data in targets.items():
+            pages_meta = comp_data.get("pages_metadata", {})
+            for url in comp_data.get("sitemap_urls", []):
+                meta = pages_meta.get(url, {})
+                pages.append({
+                    "url": url,
+                    "competitor": comp_domain,
+                    "title": meta.get("title", ""),
+                    "meta_description": meta.get("meta_description", ""),
+                    "h1": meta.get("h1", ""),
+                    "schema_types": meta.get("schema_types", []),
+                    "word_count": meta.get("word_count", 0),
+                })
+
+        _json_response(handler, {
+            "pages": pages,
+            "total": len(pages),
+            "snapshot_date": snap.get("date", ""),
+        })
+        return
+
+    _json_response(handler, {"pages": [], "total": 0})
+
+
 def handle_runs(handler: BaseHTTPRequestHandler, params: dict) -> None:
     domain = params.get("domain", [""])[0]
     if not domain:
@@ -254,6 +308,7 @@ ROUTES = {
     "/api/stats": handle_stats,
     "/api/changes": handle_changes,
     "/api/competitors": handle_competitors,
+    "/api/pages": handle_pages,
     "/api/runs": handle_runs,
 }
 
@@ -341,6 +396,11 @@ def main() -> None:
         default=str(DEFAULT_RUNS_DIR),
         help=f"Path to runs directory (default: {DEFAULT_RUNS_DIR})",
     )
+    parser.add_argument(
+        "--no-browser",
+        action="store_true",
+        help="Do not open browser automatically",
+    )
     args = parser.parse_args()
 
     _SERVER_RUNS_DIR = Path(args.runs_dir)
@@ -352,7 +412,8 @@ def main() -> None:
     print(f"Runs directory: {_SERVER_RUNS_DIR}")
     print("Press Ctrl+C to stop.")
 
-    webbrowser.open(url)
+    if not args.no_browser:
+        webbrowser.open(url)
 
     try:
         server.serve_forever()

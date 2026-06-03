@@ -1,0 +1,7 @@
+{
+  "url": "https://hypnotherapie-hypnose.fr",
+  "run_type": "full",
+  "enabled": true,
+  "cron": "0 8 * * 1",
+  "last_run": "2026-06-03"
+}
