@@ -1,4 +1,4 @@
-import { createTestDb, createClient, createUser } from './helpers'
+import { createTestDb, createClient, createUser, getToken } from './helpers'
 import request from 'supertest'
 import express from 'express'
 import jwt from 'jsonwebtoken'
@@ -156,5 +156,77 @@ describe('GET /api/auth/magic-verify', () => {
 
     const user = db.prepare(`SELECT magic_link_token FROM users WHERE email = ?`).get('client@test.com') as any
     expect(user.magic_link_token).toBeNull()
+  })
+})
+
+describe('POST /api/auth/magic-request', () => {
+  let db: ReturnType<typeof createTestDb>
+  const appMagic = express()
+  appMagic.use(express.json())
+  appMagic.use('/api/auth', authRouter)
+
+  beforeEach(() => {
+    db = createTestDb()
+    createClient(db)
+    createUser(db, 'client@test.com', 'client', 1)
+  })
+
+  it('returns 200 for unknown email (does not leak existence)', async () => {
+    const res = await request(appMagic)
+      .post('/api/auth/magic-request')
+      .send({ email: 'nobody@test.com' })
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+  })
+
+  it('returns 200 and sets magic token for known email', async () => {
+    const res = await request(appMagic)
+      .post('/api/auth/magic-request')
+      .send({ email: 'client@test.com' })
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+    const user = db.prepare(`SELECT magic_link_token, magic_link_expires_at FROM users WHERE email = ?`).get('client@test.com') as any
+    expect(user.magic_link_token).not.toBeNull()
+    expect(new Date(user.magic_link_expires_at).getTime()).toBeGreaterThan(Date.now())
+  })
+})
+
+describe('PATCH /api/auth/profile', () => {
+  let db: ReturnType<typeof createTestDb>
+  const appProfile = express()
+  appProfile.use(express.json())
+  appProfile.use('/api/auth', authRouter)
+
+  beforeEach(() => {
+    db = createTestDb()
+    createClient(db)
+    createUser(db, 'client@test.com', 'client', 1)
+    createUser(db, 'collab@test.com', 'collaborator', 1)
+  })
+
+  it('client can change password', async () => {
+    const clientUser = db.prepare(`SELECT * FROM users WHERE email = ?`).get('client@test.com') as any
+    const res = await request(appProfile)
+      .patch('/api/auth/profile')
+      .set('Authorization', `Bearer ${getToken(clientUser)}`)
+      .send({ password: 'newpassword456' })
+    expect(res.status).toBe(200)
+    expect(res.body.ok).toBe(true)
+  })
+
+  it('collaborator cannot change password (403)', async () => {
+    const collabUser = db.prepare(`SELECT * FROM users WHERE email = ?`).get('collab@test.com') as any
+    const res = await request(appProfile)
+      .patch('/api/auth/profile')
+      .set('Authorization', `Bearer ${getToken(collabUser)}`)
+      .send({ password: 'newpassword456' })
+    expect(res.status).toBe(403)
+  })
+
+  it('returns 401 without token', async () => {
+    const res = await request(appProfile)
+      .patch('/api/auth/profile')
+      .send({ password: 'newpassword456' })
+    expect(res.status).toBe(401)
   })
 })
