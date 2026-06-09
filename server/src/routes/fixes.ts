@@ -65,13 +65,22 @@ router.patch('/:runId/:fixKey', requireAuth(), (req: Request, res: Response) => 
   ).get(req.params.runId, req.params.fixKey)
 
   if (existing) {
-    db.prepare(`
-      UPDATE fix_interactions SET
-        status = COALESCE(?, status),
-        comment = COALESCE(?, comment),
-        updated_at = datetime('now')
-      WHERE run_id = ? AND fix_key = ?
-    `).run(status || null, comment !== undefined ? comment : null, req.params.runId, req.params.fixKey)
+    if (comment !== undefined) {
+      db.prepare(`
+        UPDATE fix_interactions SET
+          status = COALESCE(?, status),
+          comment = ?,
+          updated_at = datetime('now')
+        WHERE run_id = ? AND fix_key = ?
+      `).run(status || null, comment, req.params.runId, req.params.fixKey)
+    } else {
+      db.prepare(`
+        UPDATE fix_interactions SET
+          status = COALESCE(?, status),
+          updated_at = datetime('now')
+        WHERE run_id = ? AND fix_key = ?
+      `).run(status || null, req.params.runId, req.params.fixKey)
+    }
   } else {
     db.prepare(`
       INSERT INTO fix_interactions (run_id, fix_key, user_id, status, comment)
