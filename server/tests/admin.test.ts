@@ -52,6 +52,22 @@ describe('Admin routes', () => {
     expect(payload.clientId).toBe(res.body.id)
   })
 
+  it('GET /api/admin/clients/:id returns single client', async () => {
+    const res = await request(app)
+      .get(`/api/admin/clients/${client.id}`)
+      .set('Authorization', `Bearer ${getToken(admin)}`)
+    expect(res.status).toBe(200)
+    expect(res.body.id).toBe(client.id)
+    expect(res.body.slug).toBe('test-client')
+  })
+
+  it('GET /api/admin/clients/:id returns 404 for unknown id', async () => {
+    const res = await request(app)
+      .get('/api/admin/clients/99999')
+      .set('Authorization', `Bearer ${getToken(admin)}`)
+    expect(res.status).toBe(404)
+  })
+
   it('POST /api/admin/users creates user and sends magic link', async () => {
     const { sendMagicLink } = require('../src/services/email')
     const res = await request(app)
