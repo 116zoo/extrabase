@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs'
 import crypto from 'crypto'
 import jwt from 'jsonwebtoken'
 import { migrate, setDb } from '../src/db'
-import { JwtPayload } from '../src/types'
+import { JwtPayload, Role } from '../src/types'
 
 export const TEST_JWT_SECRET = 'test-secret-32-chars-minimum-ok'
 
@@ -25,7 +25,7 @@ export function createClient(db: Database.Database, slug = 'test-client') {
 export function createUser(
   db: Database.Database,
   email: string,
-  role: 'superadmin' | 'client' | 'collaborator',
+  role: Role,
   clientId: number | null = null
 ) {
   const hash = bcrypt.hashSync('password123', 10)
