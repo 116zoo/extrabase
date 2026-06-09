@@ -13,8 +13,8 @@ const app = express()
 // Parse JSON
 app.use(express.json({ limit: '50mb' }))
 
-// Dynamic CORS from clients table
-app.use((req, res, next) => {
+// Dynamic CORS from clients table — only for API routes
+app.use('/api', (req, res, next) => {
   const db = getDb()
   const clients = db.prepare(`SELECT site_url FROM clients`).all() as any[]
   const allowed = new Set([
@@ -41,6 +41,11 @@ app.use('/api/runs', runsRouter)
 app.use('/api/fixes', fixesRouter)
 app.use('/api/triggers', triggersRouter)
 app.use('/api/admin', adminRouter)
+
+// API 404 handler — prevents SPA wildcard from catching unmatched /api/* routes
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: 'Not found' })
+})
 
 // Serve React SPA for all non-API routes
 const publicDir = path.join(__dirname, '../../public')
