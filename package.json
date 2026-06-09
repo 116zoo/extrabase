@@ -1,0 +1,11 @@
+{
+  "name": "seo-dashboard",
+  "private": true,
+  "scripts": {
+    "build": "cd client && npm run build && cp -r dist/* ../server/public/",
+    "start": "cd server && node dist/index.js",
+    "dev": "cd server && npx ts-node src/index.ts",
+    "migrate": "cd server && npx ts-node -e \"const {getDb,migrate} = require('./src/db'); migrate(getDb())\"",
+    "test": "cd server && npx jest"
+  }
+}
