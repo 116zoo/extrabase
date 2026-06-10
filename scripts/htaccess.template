@@ -1,0 +1,15 @@
+Options -Indexes
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [QSA,L]
+
+# Cache static assets
+<FilesMatch "\.(js|css|woff2|png|jpg|svg|ico)$">
+  Header set Cache-Control "max-age=31536000, immutable"
+</FilesMatch>
+
+# No cache for index.html
+<FilesMatch "^index\.html$">
+  Header set Cache-Control "no-cache, no-store, must-revalidate"
+</FilesMatch>
