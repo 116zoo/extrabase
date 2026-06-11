@@ -13,6 +13,7 @@ import AdminRunDetailPage from './pages/admin/AdminRunDetailPage'
 import NotificationsPage from './pages/admin/NotificationsPage'
 import TokensPage from './pages/admin/TokensPage'
 import TriggersPage from './pages/admin/TriggersPage'
+import ScoresPage from './pages/client/ScoresPage'
 
 function RequireAuth({ children, role }: { children: React.ReactNode; role?: string }) {
   const { user } = useAuth()
@@ -51,6 +52,7 @@ export default function App() {
           <Route path="/dashboard" element={<RequireAuth><DashboardPage /></RequireAuth>} />
           <Route path="/runs/:id" element={<RequireAuth><RunDetailPage /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><ProfilePage /></RequireAuth>} />
+          <Route path="/scores" element={<RequireAuth><ScoresPage /></RequireAuth>} />
           <Route path="/admin" element={<RequireAuth role="superadmin"><AdminDashboardPage /></RequireAuth>} />
           <Route path="/admin/clients" element={<RequireAuth role="superadmin"><ClientsPage /></RequireAuth>} />
           <Route path="/admin/clients/:id" element={<RequireAuth role="superadmin"><ClientDetailPage /></RequireAuth>} />
