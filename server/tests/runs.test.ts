@@ -109,3 +109,74 @@ describe('PATCH /api/runs/:id/publish', () => {
     expect(res.status).toBe(403)
   })
 })
+
+describe('POST /api/runs/upload — audit_schema + audit_llm', () => {
+  let db: any, apiToken: string, app: any
+
+  beforeEach(() => {
+    db = createTestDb()
+    createClient(db, 'crystal-metamorphose-fr')
+    apiToken = createApiToken(db)
+    app = buildApp()
+  })
+
+  it('uploads a run with audit_schema and audit_llm', async () => {
+    const res = await request(app)
+      .post('/api/runs/upload')
+      .set('Authorization', `Bearer ${apiToken}`)
+      .send({
+        client_slug: 'crystal-metamorphose-fr',
+        run_date: '2026-06-11',
+        audit_seo: { score: 80 },
+        audit_schema: { score: 85 },
+        audit_llm: { score: 72 }
+      })
+    expect(res.status).toBe(201)
+    const run = db.prepare(`SELECT audit_schema, audit_llm FROM runs WHERE run_date = '2026-06-11'`).get() as any
+    expect(JSON.parse(run.audit_schema).score).toBe(85)
+    expect(JSON.parse(run.audit_llm).score).toBe(72)
+  })
+})
+
+describe('GET /api/runs — score fields in list', () => {
+  let db: any, admin: any, clientUser: any, client: any, app: any
+
+  beforeEach(() => {
+    db = createTestDb()
+    client = createClient(db, 'crystal-metamorphose-fr')
+    admin = createUser(db, 'admin@test.com', 'superadmin')
+    clientUser = createUser(db, 'client@test.com', 'client', client.id)
+    app = buildApp()
+    db.prepare(`
+      INSERT INTO runs (client_id, run_date, status, published_at, audit_seo, audit_geo, audit_aeo, audit_schema, audit_llm)
+      VALUES (?, '2026-06-11', 'published', datetime('now'), ?, ?, ?, ?, ?)
+    `).run(
+      client.id,
+      JSON.stringify({ score: 80 }),
+      JSON.stringify({ score: 65 }),
+      JSON.stringify({ score: 72 }),
+      JSON.stringify({ score: 85 }),
+      JSON.stringify({ score: 70 })
+    )
+  })
+
+  it('returns score fields in list response', async () => {
+    const res = await request(app)
+      .get('/api/runs')
+      .set('Authorization', `Bearer ${getToken(clientUser)}`)
+    expect(res.status).toBe(200)
+    expect(res.body[0].score_seo).toBe(80)
+    expect(res.body[0].score_geo).toBe(65)
+    expect(res.body[0].score_aeo).toBe(72)
+    expect(res.body[0].score_schema).toBe(85)
+    expect(res.body[0].score_llm).toBe(70)
+  })
+
+  it('does not include raw audit JSON in list response', async () => {
+    const res = await request(app)
+      .get('/api/runs')
+      .set('Authorization', `Bearer ${getToken(clientUser)}`)
+    expect(res.body[0].audit_seo).toBeUndefined()
+    expect(res.body[0].audit_schema).toBeUndefined()
+  })
+})

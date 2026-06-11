@@ -107,4 +107,7 @@ export function migrate(db: Database.Database): void {
       last_used_at TEXT
     );
   `)
+  // Idempotent column additions (safe on existing DBs)
+  try { db.exec(`ALTER TABLE runs ADD COLUMN audit_schema TEXT`) } catch (_) {}
+  try { db.exec(`ALTER TABLE runs ADD COLUMN audit_llm TEXT`) } catch (_) {}
 }
