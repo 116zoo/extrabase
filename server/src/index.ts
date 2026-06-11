@@ -48,7 +48,7 @@ app.use('/api', (req, res) => {
 })
 
 // Serve React SPA for all non-API routes
-const publicDir = path.join(__dirname, '../../public')
+const publicDir = path.join(__dirname, '../public')
 app.use(express.static(publicDir))
 app.get('*', (req, res) => {
   res.sendFile(path.join(publicDir, 'index.html'))
